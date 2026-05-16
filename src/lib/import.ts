@@ -81,22 +81,39 @@ export interface ParsedAPKG {
 
 export async function parseAPKG(file: ArrayBuffer): Promise<ParsedAPKG> {
   const JSZip = (await import("jszip")).default;
-  const initSqlJs = (await import("sql.js")).default;
+  const sqlMod = await import("sql.js");
+  const initSqlJs = (sqlMod.default ?? (sqlMod as unknown as typeof sqlMod.default));
 
   const zip = await JSZip.loadAsync(file);
 
-  // Fetch WASM ourselves — more reliable than locateFile for static export
   const wasmResponse = await fetch("/sql-wasm.wasm");
+  if (!wasmResponse.ok) {
+    throw new Error(`Failed to load sql-wasm.wasm (HTTP ${wasmResponse.status}).`);
+  }
   const wasmBinary = await wasmResponse.arrayBuffer();
   const SQL = await initSqlJs({ wasmBinary });
 
-  // Find collection.anki2 (main db)
-  const dbFile = zip.file("collection.anki2") || zip.file("collection.anki21");
-  if (!dbFile) {
-    throw new Error("Not a valid Anki package: collection.anki2 not found");
+  // Anki package formats:
+  //   legacy: collection.anki2       (raw sqlite)
+  //   v2:     collection.anki21      (raw sqlite)
+  //   v3:     collection.anki21b     (zstd-compressed sqlite, Anki 2.1.50+)
+  const legacy = zip.file("collection.anki2") || zip.file("collection.anki21");
+  const modern = zip.file("collection.anki21b");
+
+  let dbData: Uint8Array;
+  if (legacy) {
+    dbData = await legacy.async("uint8array");
+  } else if (modern) {
+    const compressed = await modern.async("uint8array");
+    const { decompress } = await import("fzstd");
+    dbData = decompress(compressed);
+  } else {
+    const names = Object.keys(zip.files).slice(0, 10).join(", ");
+    throw new Error(
+      `Not a valid Anki package: no collection.anki2/anki21/anki21b found. Zip contents: ${names}`
+    );
   }
 
-  const dbData = await dbFile.async("uint8array");
   const db = new SQL.Database(dbData);
 
   // Read deck name
