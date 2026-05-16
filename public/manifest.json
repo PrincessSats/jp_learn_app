@@ -1,0 +1,16 @@
+{
+  "name": "Japanese Test Prep",
+  "short_name": "TestPrep",
+  "description": "Prepare for JLPT N5-N1 and BJT Japanese proficiency tests",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0a0612",
+  "theme_color": "#1a0f2e",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}
