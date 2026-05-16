@@ -145,6 +145,22 @@ export function QuizSession({ deckId, onBack }: QuizSessionProps) {
     );
   }
 
+  /* ─── No due cards ─── */
+
+  if (cards.length === 0) {
+    return (
+      <div
+        className="col"
+        style={{ alignItems: "center", justifyContent: "center", flex: 1, gap: 12, paddingTop: 60 }}
+      >
+        <div style={{ fontSize: 40 }}>✅</div>
+        <div className="title" style={{ fontSize: 18 }}>All caught up!</div>
+        <div className="dim" style={{ fontSize: 13 }}>No cards due in this deck.</div>
+        <button className="btn ghost" onClick={onBack} style={{ marginTop: 8 }}>Back</button>
+      </div>
+    );
+  }
+
   /* ─── End screen ─── */
 
   if (finished) {

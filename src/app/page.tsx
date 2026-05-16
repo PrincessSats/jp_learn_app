@@ -6,6 +6,7 @@ import { DeckList } from "@/components/DeckList";
 import { ImportView } from "@/components/ImportView";
 import { QuizSession } from "@/components/QuizSession";
 import { StatsView } from "@/components/StatsView";
+import { IconHome, IconBook, IconChart, IconImport } from "@/components/Icons";
 import { useState, useEffect, useCallback } from "react";
 import type { Deck } from "@/types";
 import { getDB } from "@/lib/db";
@@ -21,6 +22,7 @@ export default function Page() {
   const [decks, setDecks] = useState<Deck[]>([]);
   const [dues, setDues] = useState<Record<string, number>>({});
   const [quizDeckId, setQuizDeckId] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState("home");
   const [dbg, setDbg] = useState("init");
   const [err, setErr] = useState("");
 
@@ -61,7 +63,7 @@ export default function Page() {
 
   if (err) {
     return (
-      <main className="app">
+      <div className="stage"><div className="orb o1" /><div className="orb o2" /><div className="orb o3" /><main className="app">
         <div
           className="col"
           style={{
@@ -96,67 +98,35 @@ export default function Page() {
             </button>
           </div>
         </div>
-      </main>
+      </main></div>
     );
   }
 
   const tabs = [
-    { id: "home", label: "Home", icon: "🏠" },
-    { id: "decks", label: "Decks", icon: "📚" },
-    { id: "import", label: "Import", icon: "📥" },
-    { id: "stats", label: "Stats", icon: "📊" },
+    { id: "home",   label: "Main",   icon: <IconHome /> },
+    { id: "decks",  label: "Study",  icon: <IconBook /> },
+    { id: "stats",  label: "Stats",  icon: <IconChart /> },
+    { id: "import", label: "Import", icon: <IconImport /> },
   ];
 
   return (
-    <div>
-      {/* debug top-right */}
-      <div
-        style={{
-          position: "fixed",
-          top: 10,
-          right: 10,
-          zIndex: 999,
-          background: "rgba(0,0,0,0.8)",
-          color: "#fff",
-          padding: "4px 10px",
-          borderRadius: 999,
-          fontSize: 10,
-          fontFamily: "monospace",
-          pointerEvents: "none",
-        }}
-      >
-        {dbg}
-      </div>
-      <button
-        onClick={resetAll}
-        style={{
-          position: "fixed",
-          top: 44,
-          right: 10,
-          zIndex: 999,
-          background: "rgba(255,90,78,0.3)",
-          border: "1px solid rgba(255,90,78,0.5)",
-          color: "#ffa896",
-          padding: "2px 8px",
-          borderRadius: 999,
-          fontSize: 9,
-          cursor: "pointer",
-          fontFamily: "monospace",
-        }}
-      >
-        reset
-      </button>
+    <div className="stage">
+      <div className="orb o1" />
+      <div className="orb o2" />
+      <div className="orb o3" />
 
       {quizDeckId ? (
-        <QuizSession
-          deckId={quizDeckId}
-          onBack={() => {
-            setQuizDeckId(null);
-            refreshDecks();
-          }}
-        />
+        <main className="app">
+          <QuizSession
+            deckId={quizDeckId}
+            onBack={() => {
+              setQuizDeckId(null);
+              refreshDecks();
+            }}
+          />
+        </main>
       ) : (
-        <AppShell tabs={tabs}>
+        <AppShell tabs={tabs} activeTab={activeTab} onTabChange={setActiveTab}>
           {(tab) => {
             switch (tab) {
               case "home":
@@ -165,7 +135,7 @@ export default function Page() {
                     decks={decks}
                     dues={dues}
                     onStartDeck={(id) => setQuizDeckId(id)}
-                    onNavigate={() => {}}
+                    onNavigate={(t) => setActiveTab(t)}
                   />
                 );
               case "decks":

@@ -2,16 +2,21 @@
 
 import { useState, useRef, useLayoutEffect, useEffect, type ReactNode } from "react";
 
-type Tab = { id: string; label: string; icon: string };
+type Tab = { id: string; label: string; icon: ReactNode };
 
 export function AppShell({
   tabs,
   children,
+  activeTab,
+  onTabChange,
 }: {
   tabs: Tab[];
   children: (activeTab: string) => ReactNode;
+  activeTab?: string;
+  onTabChange?: (id: string) => void;
 }) {
-  const [active, setActive] = useState(tabs[0]?.id ?? "");
+  const [internalActive, setInternalActive] = useState(tabs[0]?.id ?? "");
+  const active = activeTab ?? internalActive;
   const tabbarRef = useRef<HTMLDivElement>(null);
   const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const [blob, setBlob] = useState({ x: 8, w: 62, morphing: false });
@@ -44,7 +49,8 @@ export function AppShell({
   useEffect(() => { positionBlob(active, true); }, [active]);
 
   const handleTab = (id: string) => {
-    setActive(id);
+    setInternalActive(id);
+    onTabChange?.(id);
     setPageKey((k) => k + 1);
   };
 
@@ -77,7 +83,7 @@ export function AppShell({
               onClick={() => handleTab(tab.id)}
               aria-current={active === tab.id ? "page" : undefined}
             >
-              <span style={{ fontSize: 20, lineHeight: 1 }}>{tab.icon}</span>
+              {tab.icon}
               <span className="tab-label">{tab.label}</span>
             </button>
           ))}
