@@ -34,17 +34,15 @@ export default function Page() {
   }, []);
 
   useEffect(() => {
-    // Show app immediately, load presets + decks in background
     refreshDecks();
 
-    // Load presets asynchronously — don't block UI
-    const timer = setTimeout(() => {
-      loadPresets().then((n) => {
+    loadPresets()
+      .then((n) => {
         if (n > 0) refreshDecks();
-      }).catch(() => { /* presets optional */ });
-    }, 200); // small delay so UI renders first
-
-    return () => clearTimeout(timer);
+      })
+      .catch((err) => {
+        console.error("loadPresets failed:", err);
+      });
   }, [refreshDecks]);
 
   const tabs = [
