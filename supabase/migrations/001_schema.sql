@@ -1,4 +1,9 @@
 -- Japanese Test Prep App — Supabase Schema
+-- Drop old tables from memo_flash project if they exist
+DROP TABLE IF EXISTS review_logs CASCADE;
+DROP TABLE IF EXISTS cards CASCADE;
+DROP TABLE IF EXISTS decks CASCADE;
+DROP TABLE IF EXISTS user_stats CASCADE;
 
 -- Decks
 CREATE TABLE IF NOT EXISTS decks (
