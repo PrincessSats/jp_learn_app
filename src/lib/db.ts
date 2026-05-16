@@ -4,7 +4,7 @@ import { openDB, type IDBPDatabase } from "idb";
 import type { Card, Deck, ReviewLog, KanjiEntry, UserStats } from "@/types";
 
 const DB_NAME = "test-prep";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 let dbPromise: Promise<IDBPDatabase> | null = null;
 

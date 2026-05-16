@@ -1,66 +1,46 @@
-/* ─── Preset Loader — Installs preset decks on first visit ─── */
+/* ─── Preset Loader ─── */
 
-import { saveDeck, getAllDecks, saveCards } from "../db";
-import { ALL_PRESETS, PRESET_COUNT } from "./data";
-import type { Deck, Card } from "@/types";
+import { ALL_PRESETS } from "./data";
+import { getDB } from "../db";
 
-const PRESET_FLAG_KEY = "presets_loaded_v1";
+let didClear = false;
 
-/** Check if presets have already been installed */
-export async function arePresetsLoaded(): Promise<boolean> {
-  try {
-    const flag = localStorage.getItem(PRESET_FLAG_KEY);
-    return flag === "true";
-  } catch {
-    return false;
-  }
-}
+export async function loadAllPresets(): Promise<number> {
+  const db = await getDB();
 
-/** Load all preset decks into IndexedDB. Skips if already loaded. */
-export async function loadAllPresets(): Promise<{
-  decks: Deck[];
-  cards: Card[];
-  skipped: boolean;
-}> {
-  if (await arePresetsLoaded()) {
-    return { decks: [], cards: [], skipped: true };
-  }
-
-  const decks: Deck[] = [];
-  const cards: Card[] = [];
-
-  for (const factory of ALL_PRESETS) {
-    const preset = factory();
-
-    // Skip if deck already exists (id collision — already loaded)
-    const existing = await getAllDecks();
-    const conflict = existing.find((d) => d.id === preset.deck.id || d.name === preset.deck.name);
-    if (conflict) {
-      // Deck already exists — skip this preset
-      continue;
+  // Nuke old preset decks once per session
+  if (!didClear) {
+    didClear = true;
+    const allDecks: any[] = await db.getAll("decks");
+    const toDelete = allDecks.filter(
+      (d: any) => String(d.id).startsWith("preset-"),
+    );
+    for (const d of toDelete) {
+      try {
+        const cards: any[] = await db.getAllFromIndex("cards", "deckId", d.id);
+        for (const c of cards) await db.delete("cards", c.id);
+        await db.delete("decks", d.id);
+      } catch {}
     }
-
-    await saveDeck(preset.deck);
-    await saveCards(preset.cards);
-
-    decks.push(preset.deck);
-    cards.push(...preset.cards);
+    console.log(`[preset] Cleared ${toDelete.length} old preset decks`);
   }
 
-  // Mark as loaded
-  try {
-    localStorage.setItem(PRESET_FLAG_KEY, "true");
-  } catch { /* localStorage might be unavailable */ }
+  // Import all presets
+  const existingIds = new Set(
+    ((await db.getAll("decks")) as any[]).map((d) => d.id),
+  );
 
-  return { decks, cards, skipped: false };
+  let n = 0;
+  for (const factory of ALL_PRESETS) {
+    try {
+      const { deck, cards } = factory();
+      if (existingIds.has(deck.id)) continue;
+      await db.put("decks", deck);
+      for (const card of cards) await db.put("cards", card);
+      n++;
+    } catch {}
+  }
+
+  console.log(`[preset] Imported ${n}/${ALL_PRESETS.length}`);
+  return n;
 }
-
-/** Reset presets flag — forces reload on next visit */
-export function resetPresetsFlag(): void {
-  try {
-    localStorage.removeItem(PRESET_FLAG_KEY);
-  } catch { /* ignore */ }
-}
-
-/** Get preset count */
-export { PRESET_COUNT };
