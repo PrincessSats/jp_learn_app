@@ -93,20 +93,20 @@ export async function parseAPKG(file: ArrayBuffer): Promise<ParsedAPKG> {
   const wasmBinary = await wasmResponse.arrayBuffer();
   const SQL = await initSqlJs({ wasmBinary });
 
-  // Anki package formats:
-  //   legacy: collection.anki2       (raw sqlite)
-  //   v2:     collection.anki21      (raw sqlite)
-  //   v3:     collection.anki21b     (zstd-compressed sqlite, Anki 2.1.50+)
-  const legacy = zip.file("collection.anki2") || zip.file("collection.anki21");
+  // Anki package formats — prefer newer when multiple are present:
+  //   v3:     collection.anki21b  (zstd-compressed sqlite, Anki 2.1.50+)
+  //   v2:     collection.anki21   (raw sqlite)
+  //   legacy: collection.anki2    (raw sqlite, stub/empty in modern packages)
   const modern = zip.file("collection.anki21b");
+  const legacy = zip.file("collection.anki21") || zip.file("collection.anki2");
 
   let dbData: Uint8Array;
-  if (legacy) {
-    dbData = await legacy.async("uint8array");
-  } else if (modern) {
+  if (modern) {
     const compressed = await modern.async("uint8array");
     const { decompress } = await import("fzstd");
     dbData = decompress(compressed);
+  } else if (legacy) {
+    dbData = await legacy.async("uint8array");
   } else {
     const names = Object.keys(zip.files).slice(0, 10).join(", ");
     throw new Error(
@@ -116,14 +116,26 @@ export async function parseAPKG(file: ArrayBuffer): Promise<ParsedAPKG> {
 
   const db = new SQL.Database(dbData);
 
-  // Read deck name
+  // Read deck name — newer schema has `decks` table; older stores JSON in `col`
   let deckName = "Imported Deck";
   try {
-    const decks = db.exec("SELECT name FROM decks LIMIT 1");
+    const decks = db.exec("SELECT name FROM decks WHERE name != 'Default' LIMIT 1");
     if (decks.length > 0 && decks[0].values.length > 0) {
       deckName = String(decks[0].values[0][0] || deckName);
     }
   } catch { /* ignore */ }
+  if (deckName === "Imported Deck") {
+    try {
+      const col = db.exec("SELECT decks FROM col LIMIT 1");
+      if (col.length > 0 && col[0].values.length > 0) {
+        const json = JSON.parse(String(col[0].values[0][0]));
+        const names = Object.values(json as Record<string, { name: string }>)
+          .map((d) => d.name)
+          .filter((n) => n && n !== "Default");
+        if (names.length > 0) deckName = names[0];
+      }
+    } catch { /* ignore */ }
+  }
 
   // Read notes (fields separated by \x1f)
   let notes: { id: number; front: string; back: string }[] = [];
