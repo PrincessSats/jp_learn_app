@@ -1,0 +1,8 @@
+{
+  "presets": [
+    "presets/vocabulary/n5-vocabulary.json",
+    "presets/kanji/n5-kanji.json",
+    "presets/grammar/n5-grammar.json",
+    "presets/reading/n5-reading.json"
+  ]
+}

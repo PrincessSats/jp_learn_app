@@ -34,6 +34,9 @@ export interface Card {
   streak: number;
 }
 
+/** Deck source */
+export type DeckSource = "preset" | "user";
+
 /** A deck of cards */
 export interface Deck {
   id: string;
@@ -41,6 +44,7 @@ export interface Deck {
   description?: string;
   testType: TestType;
   practiceMode: PracticeMode;
+  source: DeckSource;
   cardCount: number;
   createdAt: number;
   lastStudied?: number;

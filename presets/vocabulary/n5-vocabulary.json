@@ -1,0 +1,14 @@
+{
+  "name": "JLPT N5 Vocabulary",
+  "description": "Essential vocabulary for JLPT N5 level — 基礎単語",
+  "testType": "N5",
+  "practiceMode": "vocabulary",
+  "cards": [
+    {
+      "front": "食べる",
+      "back": "to eat",
+      "furigana": "たべる",
+      "tags": ["verb", "food"]
+    }
+  ]
+}

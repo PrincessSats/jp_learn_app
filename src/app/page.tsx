@@ -9,11 +9,13 @@ import { StatsView } from "@/components/StatsView";
 import { useState, useEffect, useCallback } from "react";
 import type { Deck } from "@/types";
 import { getAllDecks, getDueCards } from "@/lib/db";
+import { loadPresets } from "@/lib/presets";
 
 export default function Page() {
   const [decks, setDecks] = useState<Deck[]>([]);
   const [dues, setDues] = useState<Record<string, number>>({});
   const [quizDeckId, setQuizDeckId] = useState<string | null>(null);
+  const [ready, setReady] = useState(false);
 
   const refreshDecks = useCallback(async () => {
     const all = await getAllDecks();
@@ -29,7 +31,13 @@ export default function Page() {
   }, []);
 
   useEffect(() => {
-    refreshDecks();
+    async function init() {
+      // Import preset decks on first launch
+      await loadPresets();
+      await refreshDecks();
+      setReady(true);
+    }
+    init();
   }, [refreshDecks]);
 
   const tabs = [
@@ -90,6 +98,11 @@ export default function Page() {
         }}
       />
     );
+  }
+
+  // Show nothing while loading presets
+  if (!ready) {
+    return null;
   }
 
   return <AppShell tabs={tabs}>{renderPage}</AppShell>;

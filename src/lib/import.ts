@@ -167,6 +167,7 @@ export function createDeckFromImport(
     name,
     testType,
     practiceMode,
+    source: "user",
     cardCount: cards.length,
     createdAt: Date.now(),
   };

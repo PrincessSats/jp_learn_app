@@ -1,0 +1,14 @@
+{
+  "name": "JLPT N5 Grammar",
+  "description": "Grammar patterns for JLPT N5 — 文法基礎",
+  "testType": "N5",
+  "practiceMode": "grammar",
+  "cards": [
+    {
+      "front": "〜てください",
+      "back": "Please do ~ (polite request)",
+      "furigana": "",
+      "tags": ["grammar", "polite", "N5"]
+    }
+  ]
+}

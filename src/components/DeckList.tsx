@@ -211,6 +211,11 @@ export function DeckList({
                 >
                   {deck.testType}
                 </span>
+                {deck.source === "preset" && (
+                  <span className="pill" style={{ flexShrink: 0, fontSize: 10, border: "none", background: "rgba(122,61,240,0.15)", color: "#a78bfa" }}>
+                    preset
+                  </span>
+                )}
               </div>
 
               {/* Meta row: mode pill + counts */}

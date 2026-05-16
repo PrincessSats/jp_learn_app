@@ -1,0 +1,14 @@
+{
+  "name": "JLPT N5 Reading",
+  "description": "Simple reading passages for JLPT N5 — 読解練習",
+  "testType": "N5",
+  "practiceMode": "reading",
+  "cards": [
+    {
+      "front": "わたしは学生です。毎日学校へ行きます。",
+      "back": "I am a student. I go to school every day.",
+      "furigana": "わたしはがくせいです。まいにちがっこうへいきます。",
+      "tags": ["reading", "N5", "self-introduction"]
+    }
+  ]
+}

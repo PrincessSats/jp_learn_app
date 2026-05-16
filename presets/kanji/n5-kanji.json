@@ -1,0 +1,14 @@
+{
+  "name": "JLPT N5 Kanji",
+  "description": "Basic kanji for JLPT N5 — 漢字入門",
+  "testType": "N5",
+  "practiceMode": "kanji",
+  "cards": [
+    {
+      "front": "日",
+      "back": "day; sun; Japan",
+      "furigana": "にち、じつ、ひ",
+      "tags": ["kanji", "N5"]
+    }
+  ]
+}
