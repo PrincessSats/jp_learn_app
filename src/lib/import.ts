@@ -84,7 +84,11 @@ export async function parseAPKG(file: ArrayBuffer): Promise<ParsedAPKG> {
   const initSqlJs = (await import("sql.js")).default;
 
   const zip = await JSZip.loadAsync(file);
-  const SQL = await initSqlJs();
+
+  // Fetch WASM ourselves — more reliable than locateFile for static export
+  const wasmResponse = await fetch("/sql-wasm.wasm");
+  const wasmBinary = await wasmResponse.arrayBuffer();
+  const SQL = await initSqlJs({ wasmBinary });
 
   // Find collection.anki2 (main db)
   const dbFile = zip.file("collection.anki2") || zip.file("collection.anki21");
