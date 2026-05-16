@@ -6,3 +6,5 @@ out/
 *.tsbuildinfo
 next-env.d.ts
 .DS_Store
+Japanese Learning App/
+overview.md
