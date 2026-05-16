@@ -15,7 +15,6 @@ export default function Page() {
   const [decks, setDecks] = useState<Deck[]>([]);
   const [dues, setDues] = useState<Record<string, number>>({});
   const [quizDeckId, setQuizDeckId] = useState<string | null>(null);
-  const [ready, setReady] = useState(false);
 
   const refreshDecks = useCallback(async () => {
     const all = await getAllDecks();
@@ -24,20 +23,28 @@ export default function Page() {
     const now = Date.now();
     const counts: Record<string, number> = {};
     for (const d of all) {
-      const cards = await getDueCards(d.id, now);
-      counts[d.id] = cards.length;
+      try {
+        const cards = await getDueCards(d.id, now);
+        counts[d.id] = cards.length;
+      } catch {
+        counts[d.id] = 0;
+      }
     }
     setDues(counts);
   }, []);
 
   useEffect(() => {
-    async function init() {
-      // Import preset decks on first launch
-      await loadPresets();
-      await refreshDecks();
-      setReady(true);
-    }
-    init();
+    // Show app immediately, load presets + decks in background
+    refreshDecks();
+
+    // Load presets asynchronously — don't block UI
+    const timer = setTimeout(() => {
+      loadPresets().then((n) => {
+        if (n > 0) refreshDecks();
+      }).catch(() => { /* presets optional */ });
+    }, 200); // small delay so UI renders first
+
+    return () => clearTimeout(timer);
   }, [refreshDecks]);
 
   const tabs = [
@@ -54,9 +61,7 @@ export default function Page() {
           <HomePage
             decks={decks}
             dues={dues}
-            onStartDeck={(id) => {
-              setQuizDeckId(id);
-            }}
+            onStartDeck={(id) => setQuizDeckId(id)}
             onNavigate={() => {}}
           />
         );
@@ -65,21 +70,13 @@ export default function Page() {
           <DeckList
             decks={decks}
             dueCounts={dues}
-            onSelect={(id) => {
-              setQuizDeckId(id);
-            }}
-            onDelete={(id) => {
-              setDecks((prev) => prev.filter((d) => d.id !== id));
-            }}
+            onSelect={(id) => setQuizDeckId(id)}
+            onDelete={(id) => setDecks((prev) => prev.filter((d) => d.id !== id))}
             filter={{}}
           />
         );
       case "import":
-        return (
-          <ImportView
-            onImportComplete={refreshDecks}
-          />
-        );
+        return <ImportView onImportComplete={refreshDecks} />;
       case "stats":
         return <StatsView />;
       default:
@@ -87,7 +84,6 @@ export default function Page() {
     }
   };
 
-  // Quiz overlay
   if (quizDeckId) {
     return (
       <QuizSession
@@ -98,11 +94,6 @@ export default function Page() {
         }}
       />
     );
-  }
-
-  // Show nothing while loading presets
-  if (!ready) {
-    return null;
   }
 
   return <AppShell tabs={tabs}>{renderPage}</AppShell>;
