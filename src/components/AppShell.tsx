@@ -1,9 +1,8 @@
 "use client";
 
-import { useState, useRef, useCallback, useEffect, type ReactNode } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { useState, useRef, useLayoutEffect, useEffect, type ReactNode } from "react";
 
-type Tab = { id: string; label: string; icon: ReactNode };
+type Tab = { id: string; label: string; icon: string };
 
 export function AppShell({
   tabs,
@@ -13,61 +12,77 @@ export function AppShell({
   children: (activeTab: string) => ReactNode;
 }) {
   const [active, setActive] = useState(tabs[0]?.id ?? "");
+  const tabbarRef = useRef<HTMLDivElement>(null);
   const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({});
-  const barRef = useRef<HTMLDivElement>(null);
-  const [blob, setBlob] = useState({ x: 0, w: 0 });
+  const [blob, setBlob] = useState({ x: 8, w: 62, morphing: false });
+  const [pageKey, setPageKey] = useState(0);
 
-  const updateBlob = useCallback((id: string) => {
-    const bar = barRef.current;
+  const positionBlob = (id: string, animate = true) => {
+    const bar = tabbarRef.current;
     const tab = tabRefs.current[id];
     if (!bar || !tab) return;
     const barRect = bar.getBoundingClientRect();
     const tabRect = tab.getBoundingClientRect();
-    setBlob({ x: tabRect.left - barRect.left, w: tabRect.width });
+    setBlob({
+      x: tabRect.left - barRect.left,
+      w: tabRect.width,
+      morphing: animate,
+    });
+    if (animate) {
+      setTimeout(() => setBlob((b) => ({ ...b, morphing: false })), 680);
+    }
+  };
+
+  useLayoutEffect(() => {
+    positionBlob(active, false);
+    const onResize = () => positionBlob(active, false);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+    // eslint-disable-next-line
   }, []);
 
-  useEffect(() => {
-    updateBlob(active);
-  }, [active, updateBlob]);
+  useEffect(() => { positionBlob(active, true); }, [active]);
+
+  const handleTab = (id: string) => {
+    setActive(id);
+    setPageKey((k) => k + 1);
+  };
 
   return (
-    <div className="app-shell">
-      <div style={{ flex: 1, overflow: "hidden auto", paddingBottom: 8 }}>
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={active}
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -12 }}
-            transition={{ duration: 0.25 }}
-          >
-            {children(active)}
-          </motion.div>
-        </AnimatePresence>
+    <main className="app">
+      {/* Page content */}
+      <div className="stretch" style={{ minHeight: 0 }}>
+        <div key={pageKey} className="page">
+          {children(active)}
+        </div>
       </div>
 
       {/* Tab bar */}
-      <div ref={barRef} className="tab-bar">
-        <div
-          className="tab-blob"
-          style={{ left: blob.x, width: blob.w || 54 }}
-        />
-        {tabs.map((tab) => (
-          <button
-            key={tab.id}
-            ref={(el) => { tabRefs.current[tab.id] = el; }}
-            onClick={() => setActive(tab.id)}
-            className="relative z-10 flex flex-col items-center gap-0.5 px-3 py-1 transition-colors duration-200"
+      <div className="tabbar-wrap">
+        <nav className="tabbar" ref={tabbarRef} aria-label="Primary">
+          <div
+            className="tab-blob-track"
             style={{
-              color: active === tab.id ? "var(--color-ink)" : "var(--color-ink-faint)",
-              minWidth: 54,
+              transform: `translateX(${blob.x - 8}px)`,
+              width: blob.w,
             }}
           >
-            <span className="text-lg">{tab.icon}</span>
-            <span className="text-[10px] font-medium leading-none">{tab.label}</span>
-          </button>
-        ))}
+            <div className={`tab-blob${blob.morphing ? " morphing" : ""}`} />
+          </div>
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              ref={(el) => { tabRefs.current[tab.id] = el; }}
+              className={`tab${active === tab.id ? " active" : ""}`}
+              onClick={() => handleTab(tab.id)}
+              aria-current={active === tab.id ? "page" : undefined}
+            >
+              <span style={{ fontSize: 20, lineHeight: 1 }}>{tab.icon}</span>
+              <span className="tab-label">{tab.label}</span>
+            </button>
+          ))}
+        </nav>
       </div>
-    </div>
+    </main>
   );
 }

@@ -1,199 +1,180 @@
 "use client";
 
-import { useState, useCallback } from "react";
-import { motion } from "framer-motion";
+import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import type { Card, Grade } from "@/types";
-import { KanjiPopup } from "./KanjiPopup";
+import { streakToGrade } from "@/lib/fsrs";
+
+/* ─── Props ─── */
 
 interface QuizFillProps {
   card: Card;
   onAnswer: (grade: Grade, correct: boolean) => void;
 }
 
-/** Strip punctuation, trim, lowercase for fuzzy comparison */
-function normalize(str: string): string {
-  return str
-    .trim()
-    .toLowerCase()
-    .replace(/[.,!?;:()「」『』【】、。・？！；：…—～""''・\s]+/g, "");
-}
+/* ─── Fuzzy matching (Levenshtein distance ≤ 1) ─── */
 
-/**
- * Replace the first occurrence of `back` in `front` with a blank indicator.
- * If the answer text isn't found verbatim, return the front as-is.
- */
-function buildPrompt(front: string, back: string): string {
-  const idx = front.indexOf(back);
-  if (idx !== -1) {
-    return front.slice(0, idx) + "______" + front.slice(idx + back.length);
+function fuzzyMatch(input: string, target: string): boolean {
+  const a = input.toLowerCase().trim();
+  const b = target.toLowerCase().trim();
+
+  if (a === b) return true;
+  if (Math.abs(a.length - b.length) > 1) return false;
+
+  const dp: number[][] = [];
+  for (let i = 0; i <= a.length; i++) {
+    dp[i] = [i];
   }
-  return front;
-}
-
-/**
- * Split text into segments, rendering individual kanji characters as
- * clickable accent-coloured buttons that open KanjiPopup.
- */
-function renderKanjiText(
-  text: string,
-  onKanjiClick: (char: string) => void
-): React.ReactNode {
-  const parts: React.ReactNode[] = [];
-  const regex = /([\u4e00-\u9faf\u3400-\u4dbf])/g;
-  let lastIndex = 0;
-  let match: RegExpExecArray | null;
-  let key = 0;
-
-  while ((match = regex.exec(text)) !== null) {
-    if (match.index > lastIndex) {
-      parts.push(<span key={key++}>{text.slice(lastIndex, match.index)}</span>);
+  for (let j = 0; j <= b.length; j++) {
+    dp[0][j] = j;
+  }
+  for (let i = 1; i <= a.length; i++) {
+    for (let j = 1; j <= b.length; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      dp[i][j] = Math.min(
+        dp[i - 1][j] + 1,
+        dp[i][j - 1] + 1,
+        dp[i - 1][j - 1] + cost
+      );
     }
-    const char = match[0];
-    parts.push(
-      <button
-        key={key++}
-        type="button"
-        onClick={(e) => {
-          e.stopPropagation();
-          onKanjiClick(char);
-        }}
-        className="inline-flex items-center justify-center underline decoration-dotted underline-offset-2 transition-colors hover:brightness-125"
-        style={{
-          color: "var(--color-accent)",
-          minHeight: 44,
-          minWidth: 44,
-        }}
-      >
-        {char}
-      </button>
-    );
-    lastIndex = match.index + match[0].length;
   }
-
-  if (lastIndex < text.length) {
-    parts.push(<span key={key++}>{text.slice(lastIndex)}</span>);
-  }
-
-  return <>{parts}</>;
+  return dp[a.length][b.length] <= 1;
 }
+
+/* ─── Component ─── */
 
 export function QuizFill({ card, onAnswer }: QuizFillProps) {
-  const [input, setInput] = useState("");
+  const [answer, setAnswer] = useState("");
   const [submitted, setSubmitted] = useState(false);
-  const [isCorrect, setIsCorrect] = useState(false);
-  const [kanjiChar, setKanjiChar] = useState<string | null>(null);
+  const [isCorrect, setIsCorrect] = useState<boolean | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
-  const prompt = buildPrompt(card.front, card.back);
+  /* ─── Build sentence with blank ─── */
+
+  const sentence = useMemo(() => {
+    const front = card.front;
+    const back = card.back;
+    // Replace the first occurrence of the answer text with "_____"
+    if (front.includes(back)) {
+      return front.replace(back, "_____");
+    }
+    // Fallback: append blank
+    return `${front} (_____)`;
+  }, [card.front, card.back]);
+
+  /* ─── Reset on new card ─── */
+
+  useEffect(() => {
+    setAnswer("");
+    setSubmitted(false);
+    setIsCorrect(null);
+    inputRef.current?.focus();
+  }, [card.id]);
+
+  /* ─── Submit handler ─── */
 
   const handleSubmit = useCallback(() => {
-    if (submitted) return;
+    if (submitted || !answer.trim()) return;
 
-    const correct = normalize(input) === normalize(card.back);
+    const correct = fuzzyMatch(answer, card.back);
     setIsCorrect(correct);
     setSubmitted(true);
 
-    // Brief delay so user sees feedback before advancing
+    const grade = streakToGrade(card.streak, correct);
+
     setTimeout(() => {
-      const grade: Grade = correct ? 3 : 1;
       onAnswer(grade, correct);
-    }, 1500);
-  }, [input, card.back, submitted, onAnswer]);
+    }, 1200);
+  }, [submitted, answer, card.back, card.streak, onAnswer]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
-      if (e.key === "Enter" && !submitted && input.trim()) {
+      if (e.key === "Enter") {
         handleSubmit();
       }
     },
-    [handleSubmit, submitted, input]
+    [handleSubmit]
   );
 
-  return (
-    <div className="flex flex-col gap-5">
-      {/* Sentence with blank */}
-      <motion.div
-        className="glass p-5 text-center"
-        initial={{ opacity: 0, y: 16 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.3 }}
-      >
-        <p className="text-lg font-jp leading-relaxed">
-          {renderKanjiText(prompt, setKanjiChar)}
-        </p>
-      </motion.div>
+  /* ─── Render ─── */
 
-      {/* Text input */}
-      <motion.div
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.12, duration: 0.25 }}
-      >
+  return (
+    <div className="col" style={{ flex: 1, gap: 20 }}>
+      {/* ─── Sentence with blank ─── */}
+      <div className="glass" style={{ padding: "28px 20px", textAlign: "center" }}>
+        <div className="jp" style={{ fontSize: 20, lineHeight: 1.6 }}>
+          {sentence}
+        </div>
+      </div>
+
+      {/* ─── Input area ─── */}
+      <div className="col" style={{ gap: 10 }}>
         <input
+          ref={inputRef}
+          className="input"
           type="text"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
+          placeholder="Type your answer…"
+          value={answer}
+          onChange={(e) => setAnswer(e.target.value)}
           onKeyDown={handleKeyDown}
           disabled={submitted}
-          placeholder="答えを入力…"
+          autoComplete="off"
           autoFocus
-          className="glass w-full px-4 py-3 text-sm outline-none transition-all duration-200 placeholder:text-ink-faint"
           style={{
-            border: `1px solid ${
-              submitted
-                ? isCorrect
-                  ? "#22c55e"
-                  : "#ef4444"
-                : "var(--color-glass-border)"
-            }`,
-            minHeight: 48,
-          }}
-          onFocus={(e) => {
-            if (!submitted) {
-              e.currentTarget.style.borderColor = "var(--color-accent)";
-            }
-          }}
-          onBlur={(e) => {
-            if (!submitted) {
-              e.currentTarget.style.borderColor = "var(--color-glass-border)";
-            }
+            borderColor: submitted
+              ? isCorrect
+                ? "rgba(52, 211, 153, 0.6)"
+                : "rgba(239, 68, 68, 0.6)"
+              : undefined,
+            transition: "border-color 0.3s",
           }}
         />
-      </motion.div>
 
-      {/* Submit button */}
-      <motion.button
-        type="button"
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.2, duration: 0.25 }}
-        onClick={handleSubmit}
-        disabled={submitted || !input.trim()}
-        className="glass-strong w-full py-3 text-sm font-medium transition-all duration-200 disabled:opacity-40"
-        style={{ minHeight: 48 }}
-      >
-        {submitted ? (isCorrect ? "✓ 正解！" : "✗ 不正解") : "確認"}
-      </motion.button>
+        {/* Submit button (before answer) */}
+        {!submitted && (
+          <button
+            className="btn"
+            onClick={handleSubmit}
+            disabled={!answer.trim()}
+            style={{
+              opacity: answer.trim() ? 1 : 0.5,
+              cursor: answer.trim() ? "pointer" : "not-allowed",
+            }}
+          >
+            Check answer
+          </button>
+        )}
 
-      {/* Correct answer revealed on wrong guess */}
-      {submitted && !isCorrect && (
-        <motion.div
-          className="text-center text-sm"
-          style={{ color: "var(--color-ink-dim)" }}
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 0.3 }}
-        >
-          正解:{" "}
-          <span className="font-jp" style={{ color: "var(--color-accent)" }}>
-            {card.back}
-          </span>
-        </motion.div>
-      )}
-
-      {/* Kanji popup overlay */}
-      {kanjiChar && (
-        <KanjiPopup character={kanjiChar} onClose={() => setKanjiChar(null)} />
-      )}
+        {/* Result panel (after submit) */}
+        {submitted && (
+          <div
+            className="glass"
+            style={{
+              padding: "14px 16px",
+              textAlign: "center",
+              borderColor: isCorrect
+                ? "rgba(52, 211, 153, 0.4)"
+                : "rgba(239, 68, 68, 0.4)",
+              transition: "border-color 0.3s",
+            }}
+          >
+            {isCorrect ? (
+              <div style={{ color: "#6ee7b7", fontWeight: 600, fontSize: 14 }}>
+                ✓ Correct!
+              </div>
+            ) : (
+              <div className="col" style={{ gap: 4, alignItems: "center" }}>
+                <div style={{ color: "#fca5a5", fontWeight: 600, fontSize: 14 }}>
+                  ✗ Incorrect
+                </div>
+                <div className="jp dim" style={{ fontSize: 15 }}>
+                  Correct answer:{" "}
+                  <strong style={{ color: "var(--ink)" }}>{card.back}</strong>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

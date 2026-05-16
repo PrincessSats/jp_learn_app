@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useMemo, useCallback } from "react";
-import { motion } from "framer-motion";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import type { Card, Grade } from "@/types";
-import { KanjiPopup } from "./KanjiPopup";
+import { streakToGrade } from "@/lib/fsrs";
+
+/* ─── Props ─── */
 
 interface QuizMCQProps {
   card: Card;
@@ -11,165 +12,142 @@ interface QuizMCQProps {
   onAnswer: (grade: Grade, correct: boolean) => void;
 }
 
-/** Fisher-Yates shuffle */
-function shuffle<T>(arr: T[]): T[] {
-  const a = [...arr];
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [a[i], a[j]] = [a[j], a[i]];
-  }
-  return a;
-}
-
-/**
- * Split text into segments, rendering individual kanji characters as
- * clickable accent-coloured buttons that open KanjiPopup.
- */
-function renderKanjiText(
-  text: string,
-  onKanjiClick: (char: string) => void
-): React.ReactNode {
-  const parts: React.ReactNode[] = [];
-  const regex = /([\u4e00-\u9faf\u3400-\u4dbf])/g;
-  let lastIndex = 0;
-  let match: RegExpExecArray | null;
-  let key = 0;
-
-  while ((match = regex.exec(text)) !== null) {
-    if (match.index > lastIndex) {
-      parts.push(<span key={key++}>{text.slice(lastIndex, match.index)}</span>);
-    }
-    const char = match[0];
-    parts.push(
-      <button
-        key={key++}
-        type="button"
-        onClick={(e) => {
-          e.stopPropagation();
-          onKanjiClick(char);
-        }}
-        className="inline-flex items-center justify-center underline decoration-dotted underline-offset-2 transition-colors hover:brightness-125"
-        style={{
-          color: "var(--color-accent)",
-          minHeight: 44,
-          minWidth: 44,
-        }}
-      >
-        {char}
-      </button>
-    );
-    lastIndex = match.index + match[0].length;
-  }
-
-  if (lastIndex < text.length) {
-    parts.push(<span key={key++}>{text.slice(lastIndex)}</span>);
-  }
-
-  return <>{parts}</>;
-}
+/* ─── Component ─── */
 
 export function QuizMCQ({ card, allCards, onAnswer }: QuizMCQProps) {
-  const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
-  const [answered, setAnswered] = useState(false);
-  const [kanjiChar, setKanjiChar] = useState<string | null>(null);
+  const [selected, setSelected] = useState<string | null>(null);
+  const [answeredCorrectly, setAnsweredCorrectly] = useState<boolean | null>(null);
 
-  // Generate 4 shuffled options: correct answer + 3 distractors from other cards
-  const optionList = useMemo(() => {
-    const others = shuffle(allCards.filter((c) => c.id !== card.id));
-    const distractors: string[] = [];
-    for (const c of others) {
-      if (distractors.length >= 3) break;
-      if (c.back && c.back !== card.back && !distractors.includes(c.back)) {
-        distractors.push(c.back);
-      }
-    }
-    while (distractors.length < 3) {
-      distractors.push("——");
-    }
+  /* ─── Generate 4 options (correct back + 3 unique distractors) ─── */
 
-    const all = [card.back, ...distractors];
-    return shuffle(all);
-    // Shifts per render because allCards order is stable but shuffle is re-run
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  const options = useMemo(() => {
+    const distractors = allCards
+      .filter((c) => c.id !== card.id && c.back !== card.back)
+      .map((c) => c.back)
+      .filter((b, i, arr) => arr.indexOf(b) === i); // deduplicate
+
+    // Shuffle, take up to 3, add correct, shuffle again
+    const shuffled = distractors.sort(() => Math.random() - 0.5).slice(0, 3);
+    const all = [card.back, ...shuffled].sort(() => Math.random() - 0.5);
+    return all;
   }, [card.id, card.back, allCards]);
 
-  const correctIndex = optionList.indexOf(card.back);
+  /* ─── Reset on new card ─── */
+
+  useEffect(() => {
+    setSelected(null);
+    setAnsweredCorrectly(null);
+  }, [card.id]);
+
+  /* ─── Option tap handler ─── */
 
   const handleSelect = useCallback(
-    (idx: number) => {
-      if (answered) return;
-      setSelectedIdx(idx);
-      setAnswered(true);
+    (option: string) => {
+      if (selected !== null) return; // already answered this card
 
-      const isCorrect = optionList[idx] === card.back;
+      const correct = option === card.back;
+      setSelected(option);
+      setAnsweredCorrectly(correct);
 
-      // Auto-advance after 800ms
+      const grade = streakToGrade(card.streak, correct);
+
       setTimeout(() => {
-        const grade: Grade = isCorrect ? 3 : 1;
-        onAnswer(grade, isCorrect);
+        onAnswer(grade, correct);
       }, 800);
     },
-    [answered, optionList, card.back, onAnswer]
+    [selected, card.back, card.streak, onAnswer]
   );
 
+  /* ─── Render ─── */
+
   return (
-    <div className="flex flex-col gap-5">
-      {/* Question (front) */}
-      <motion.div
-        className="glass p-5 text-center"
-        initial={{ opacity: 0, y: 16 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.3 }}
-      >
-        <p className="text-lg font-jp leading-relaxed">
-          {renderKanjiText(card.front, setKanjiChar)}
-        </p>
-      </motion.div>
+    <div className="col" style={{ flex: 1, gap: 20 }}>
+      {/* ─── Front (Japanese text) ─── */}
+      <div className="glass" style={{ padding: "28px 20px", textAlign: "center" }}>
+        <div className="jp title" style={{ fontSize: 32 }}>
+          {card.front}
+        </div>
+      </div>
 
-      {/* Answer options */}
-      <div className="flex flex-col gap-3">
-        {optionList.map((opt, idx) => {
-          const isCorrect = idx === correctIndex;
-          const isSelected = selectedIdx === idx;
-          let bg = "var(--color-glass-bg)";
-          let border = "var(--color-glass-border)";
+      {/* ─── Options ─── */}
+      <div className="col" style={{ gap: 10 }}>
+        {options.map((option, i) => {
+          const isSelected = selected === option;
+          const isCorrectOption = option === card.back;
 
-          if (answered) {
-            if (isCorrect) {
-              bg = "rgba(34, 197, 94, 0.18)";
-              border = "#22c55e";
-            } else if (isSelected) {
-              bg = "rgba(239, 68, 68, 0.18)";
-              border = "#ef4444";
-            }
+          // Border styling based on answer state
+          let borderStyle: React.CSSProperties = {};
+          if (isSelected) {
+            borderStyle = {
+              borderColor: isCorrectOption
+                ? "rgba(52, 211, 153, 0.6)"
+                : "rgba(239, 68, 68, 0.6)",
+              boxShadow: isCorrectOption
+                ? "0 0 16px rgba(52, 211, 153, 0.25)"
+                : "0 0 16px rgba(239, 68, 68, 0.25)",
+            };
+          } else if (selected !== null && isCorrectOption) {
+            // Reveal correct answer after selection
+            borderStyle = {
+              borderColor: "rgba(52, 211, 153, 0.4)",
+              boxShadow: "0 0 12px rgba(52, 211, 153, 0.15)",
+            };
           }
 
           return (
-            <motion.button
-              key={`${card.id}-${idx}`}
-              type="button"
-              initial={{ opacity: 0, x: -24 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: idx * 0.07, duration: 0.25 }}
-              onClick={() => handleSelect(idx)}
-              disabled={answered}
-              className="glass w-full text-left px-4 py-3 text-sm transition-all duration-200 disabled:cursor-default"
+            <div
+              key={i}
+              className={`glass${selected === null ? " press" : ""}`}
               style={{
-                background: bg,
-                borderColor: border,
-                minHeight: 48,
+                padding: "16px 18px",
+                cursor: selected === null ? "pointer" : "default",
+                transition: "border-color 0.3s, box-shadow 0.3s",
+                ...borderStyle,
               }}
+              onClick={() => handleSelect(option)}
+              role="button"
+              tabIndex={selected === null ? 0 : -1}
+              onKeyDown={(e) => {
+                if ((e.key === "Enter" || e.key === " ") && selected === null) {
+                  handleSelect(option);
+                }
+              }}
+              aria-label={`Option ${String.fromCharCode(65 + i)}`}
             >
-              {renderKanjiText(opt, setKanjiChar)}
-            </motion.button>
+              <div className="row" style={{ gap: 12, alignItems: "center" }}>
+                {/* Letter badge */}
+                <span
+                  className="mono faint"
+                  style={{
+                    width: 26,
+                    height: 26,
+                    borderRadius: "50%",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: 12,
+                    fontWeight: 600,
+                    background: "rgba(255,255,255,0.06)",
+                    flexShrink: 0,
+                  }}
+                >
+                  {String.fromCharCode(65 + i)}
+                </span>
+
+                {/* Answer text */}
+                <span style={{ fontSize: 15, fontWeight: 500 }}>{option}</span>
+
+                {/* Result icon */}
+                {isSelected && (
+                  <span style={{ marginLeft: "auto", fontSize: 18 }}>
+                    {isCorrectOption ? "✓" : "✗"}
+                  </span>
+                )}
+              </div>
+            </div>
           );
         })}
       </div>
-
-      {/* Kanji popup overlay */}
-      {kanjiChar && (
-        <KanjiPopup character={kanjiChar} onClose={() => setKanjiChar(null)} />
-      )}
     </div>
   );
 }

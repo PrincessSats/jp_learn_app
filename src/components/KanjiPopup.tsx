@@ -1,115 +1,181 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
-import { motion } from "framer-motion";
-import { batchLookupKanji } from "@/lib/kanji";
+import { useState, useEffect, useCallback } from "react";
 import type { KanjiEntry } from "@/types";
+import { batchLookupKanji } from "@/lib/kanji";
+
+/* ─── Props ─── */
 
 interface KanjiPopupProps {
   character: string;
   onClose: () => void;
 }
 
+/* ─── Component ─── */
+
 export function KanjiPopup({ character, onClose }: KanjiPopupProps) {
   const [entry, setEntry] = useState<KanjiEntry | null>(null);
   const [loading, setLoading] = useState(true);
-  const popupRef = useRef<HTMLDivElement>(null);
+
+  /* ─── Lookup kanji on mount ─── */
 
   useEffect(() => {
-    setLoading(true);
-    batchLookupKanji([character]).then((results) => {
-      const found = results.get(character);
-      setEntry(found ?? null);
-      setLoading(false);
-    });
+    let cancelled = false;
+
+    async function load() {
+      setLoading(true);
+      const map = await batchLookupKanji([character]);
+      if (!cancelled) {
+        const found = map.get(character);
+        if (found) setEntry(found);
+        setLoading(false);
+      }
+    }
+    load();
+
+    return () => {
+      cancelled = true;
+    };
   }, [character]);
 
-  // Tap outside → close
-  useEffect(() => {
-    const handleTap = (e: MouseEvent | TouchEvent) => {
-      if (popupRef.current && !popupRef.current.contains(e.target as Node)) {
+  /* ─── Close on background tap ─── */
+
+  const handleBackdropClick = useCallback(
+    (e: React.MouseEvent) => {
+      if (e.target === e.currentTarget) {
         onClose();
       }
-    };
-    document.addEventListener("mousedown", handleTap);
-    document.addEventListener("touchstart", handleTap, { passive: true });
-    return () => {
-      document.removeEventListener("mousedown", handleTap);
-      document.removeEventListener("touchstart", handleTap);
-    };
-  }, [onClose]);
+    },
+    [onClose]
+  );
+
+  /* ─── Render ─── */
 
   return (
-    <motion.div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ background: "rgba(0,0,0,0.6)" }}
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      onClick={onClose}
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 100,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        background: "rgba(0, 0, 0, 0.55)",
+        backdropFilter: "blur(8px)",
+        WebkitBackdropFilter: "blur(8px)",
+        padding: 16,
+      }}
+      onClick={handleBackdropClick}
     >
-      <motion.div
-        ref={popupRef}
-        className="glass-strong p-6 w-full max-w-xs text-center"
-        initial={{ scale: 0.85, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        transition={{ type: "spring", damping: 22, stiffness: 280 }}
+      <div
+        className="glass glass-strong"
+        style={{
+          width: "100%",
+          maxWidth: 340,
+          padding: 28,
+          textAlign: "center",
+        }}
         onClick={(e) => e.stopPropagation()}
       >
-        {loading ? (
-          <div className="flex flex-col items-center gap-3 py-4">
-            <div
-              className="w-16 h-16 rounded-xl animate-pulse"
-              style={{ background: "var(--color-glass-bg-strong)" }}
-            />
-            <div
-              className="w-32 h-4 rounded animate-pulse"
-              style={{ background: "var(--color-glass-bg-strong)" }}
-            />
-            <div
-              className="w-24 h-3 rounded animate-pulse"
-              style={{ background: "var(--color-glass-bg-strong)" }}
-            />
+        {/* ─── Loading state ─── */}
+        {loading && (
+          <div className="dim mono" style={{ fontSize: 13, padding: 20 }}>
+            Loading…
           </div>
-        ) : entry ? (
-          <>
-            <div className="text-5xl font-jp mb-2">{entry.character}</div>
-            <div
-              className="text-sm mb-3"
-              style={{ color: "var(--color-ink-dim)" }}
-            >
-              {entry.meanings.join(", ")}
+        )}
+
+        {/* ─── Entry found ─── */}
+        {!loading && entry && (
+          <div className="col" style={{ gap: 16, alignItems: "center" }}>
+            {/* Large kanji character */}
+            <div className="jp" style={{ fontSize: 48, lineHeight: 1 }}>
+              {entry.character}
             </div>
+
+            {/* Meanings */}
+            <div className="col" style={{ gap: 4, alignItems: "center" }}>
+              <div className="eyebrow" style={{ marginBottom: 2 }}>
+                Meanings
+              </div>
+              <div
+                style={{
+                  fontSize: 14,
+                  fontWeight: 500,
+                  lineHeight: 1.5,
+                  color: "var(--ink)",
+                }}
+              >
+                {entry.meanings.join(", ")}
+              </div>
+            </div>
+
+            {/* On'yomi readings */}
             {entry.on_readings.length > 0 && (
-              <div
-                className="text-xs mb-1"
-                style={{ color: "var(--color-ink-dim)" }}
-              >
-                <span style={{ color: "var(--color-ink-faint)" }}>ON </span>
-                {entry.on_readings.join("、")}
+              <div className="col" style={{ gap: 6, alignItems: "center" }}>
+                <div className="eyebrow" style={{ marginBottom: 2 }}>
+                  On&apos;yomi
+                </div>
+                <div
+                  className="row"
+                  style={{
+                    gap: 4,
+                    flexWrap: "wrap",
+                    justifyContent: "center",
+                  }}
+                >
+                  {entry.on_readings.map((r) => (
+                    <span key={r} className="pill accent">
+                      {r}
+                    </span>
+                  ))}
+                </div>
               </div>
             )}
+
+            {/* Kun'yomi readings */}
             {entry.kun_readings.length > 0 && (
-              <div
-                className="text-xs mb-1"
-                style={{ color: "var(--color-ink-dim)" }}
-              >
-                <span style={{ color: "var(--color-ink-faint)" }}>KUN </span>
-                {entry.kun_readings.join("、")}
+              <div className="col" style={{ gap: 6, alignItems: "center" }}>
+                <div className="eyebrow" style={{ marginBottom: 2 }}>
+                  Kun&apos;yomi
+                </div>
+                <div
+                  className="row"
+                  style={{
+                    gap: 4,
+                    flexWrap: "wrap",
+                    justifyContent: "center",
+                  }}
+                >
+                  {entry.kun_readings.map((r) => (
+                    <span key={r} className="pill accent">
+                      {r}
+                    </span>
+                  ))}
+                </div>
               </div>
             )}
+
+            {/* JLPT level badge */}
             {entry.jlpt && (
-              <div className="text-xs mt-2" style={{ color: "var(--color-accent)" }}>
+              <div className="mono dim" style={{ fontSize: 11 }}>
                 JLPT N{entry.jlpt}
               </div>
             )}
-          </>
-        ) : (
-          <div className="text-sm py-4" style={{ color: "var(--color-ink-dim)" }}>
-            No data available
           </div>
         )}
-      </motion.div>
-    </motion.div>
+
+        {/* ─── No data ─── */}
+        {!loading && !entry && (
+          <div className="col" style={{ gap: 12, alignItems: "center" }}>
+            <div className="jp" style={{ fontSize: 36, opacity: 0.5 }}>
+              {character}
+            </div>
+            <div className="dim" style={{ fontSize: 13 }}>
+              No data available
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
